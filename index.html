@@ -1,186 +1,20 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="it">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>3D Ball Rolling Game (Mobile)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ball Game</title>
     <style>
-        body { margin: 0; overflow: hidden; font-family: Arial, sans-serif; }
-        canvas { display: block; }
-        #joystick { 
-            position: fixed; bottom: 20px; left: 20px; width: 100px; height: 100px;
-            background: rgba(0, 0, 0, 0.3); border-radius: 50%; 
-            touch-action: none; display: flex; justify-content: center; align-items: center;
-        }
-        #joystick div { 
-            width: 50px; height: 50px; background: rgba(255, 255, 255, 0.7); 
-            border-radius: 50%; position: relative; transition: transform 0.1s;
-        }
-        #score {
-            position: fixed; top: 10px; left: 10px; font-size: 20px; color: white; 
-            background: rgba(0, 0, 0, 0.5); padding: 10px; border-radius: 5px;
+        body {
+            background-color: white;
+            color: black;
+            text-align: center;
         }
     </style>
 </head>
 <body>
-    <div id="score">Score: 0</div>
-    <div id="joystick"><div></div></div>
-    
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/cannon-es/0.20.0/cannon-es.js"></script>
-    
-    <script>
-        // Scene setup
-        const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.shadowMap.enabled = true;
-        document.body.appendChild(renderer.domElement);
-
-        // Physics world
-        const world = new CANNON.World();
-        world.gravity.set(0, -9.8, 0);
-
-        // Floor with texture
-        const textureLoader = new THREE.TextureLoader();
-        const floorTexture = textureLoader.load('https://threejsfundamentals.org/threejs/resources/images/wall.jpg');
-        floorTexture.wrapS = floorTexture.wrapT = THREE.RepeatWrapping;
-        floorTexture.repeat.set(10, 10);
-        
-        const floorGeometry = new THREE.PlaneGeometry(50, 50);
-        const floorMaterial = new THREE.MeshStandardMaterial({ map: floorTexture, side: THREE.DoubleSide });
-        const floorMesh = new THREE.Mesh(floorGeometry, floorMaterial);
-        floorMesh.rotation.x = -Math.PI / 2;
-        floorMesh.receiveShadow = true;
-        scene.add(floorMesh);
-
-        const floorBody = new CANNON.Body({
-            mass: 0,
-            shape: new CANNON.Plane(),
-            material: new CANNON.Material({ friction: 0.3, restitution: 0.6 })
-        });
-        floorBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
-        world.addBody(floorBody);
-
-        // Ball with realistic texture
-        const ballTexture = textureLoader.load('https://threejsfundamentals.org/threejs/resources/images/brick-diffuse.jpg');
-        const ballGeometry = new THREE.SphereGeometry(1, 32, 32);
-        const ballMaterial = new THREE.MeshStandardMaterial({ map: ballTexture, metalness: 0.5, roughness: 0.2 });
-        const ballMesh = new THREE.Mesh(ballGeometry, ballMaterial);
-        ballMesh.castShadow = true;
-        scene.add(ballMesh);
-
-        const ballBody = new CANNON.Body({
-            mass: 1,
-            shape: new CANNON.Sphere(1),
-            material: new CANNON.Material({ friction: 0.2, restitution: 0.5 })
-        });
-        ballBody.position.set(0, 5, 0);
-        world.addBody(ballBody);
-
-        // Coins (randomly placed)
-        const coins = [];
-        const coinBodies = [];
-        const coinGeometry = new THREE.CylinderGeometry(0.5, 0.5, 0.2, 32);
-        const coinMaterial = new THREE.MeshStandardMaterial({ color: 0xffd700 });
-
-        for (let i = 0; i < 5; i++) {
-            const coinMesh = new THREE.Mesh(coinGeometry, coinMaterial);
-            coinMesh.castShadow = true;
-            scene.add(coinMesh);
-
-            const coinBody = new CANNON.Body({
-                mass: 0,
-                shape: new CANNON.Cylinder(0.5, 0.5, 0.2, 32),
-                material: new CANNON.Material({ friction: 0.1, restitution: 0.3 })
-            });
-            coinBody.position.set(Math.random() * 20 - 10, 0.5, Math.random() * 20 - 10);
-            world.addBody(coinBody);
-
-            coins.push(coinMesh);
-            coinBodies.push(coinBody);
-        }
-
-        // Lights
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
-        scene.add(ambientLight);
-
-        const light = new THREE.DirectionalLight(0xffffff, 1);
-        light.position.set(10, 10, 10);
-        light.castShadow = true;
-        scene.add(light);
-
-        // Camera positioning
-        camera.position.set(0, 5, 10);
-        camera.lookAt(0, 0, 0);
-
-        // Joystick movement
-        const joystick = document.getElementById("joystick");
-        const joystickInner = joystick.querySelector("div");
-        let touchStartX = 0, touchStartY = 0;
-        let touchMoveX = 0, touchMoveY = 0;
-        let isTouching = false;
-        let score = 0;
-
-        joystick.addEventListener("touchstart", (e) => {
-            const touch = e.touches[0];
-            touchStartX = touch.clientX;
-            touchStartY = touch.clientY;
-            isTouching = true;
-        });
-
-        joystick.addEventListener("touchmove", (e) => {
-            if (!isTouching) return;
-            const touch = e.touches[0];
-            touchMoveX = touch.clientX - touchStartX;
-            touchMoveY = touch.clientY - touchStartY;
-
-            const maxDist = 40;
-            const distance = Math.sqrt(touchMoveX**2 + touchMoveY**2);
-            if (distance > maxDist) {
-                touchMoveX = (touchMoveX / distance) * maxDist;
-                touchMoveY = (touchMoveY / distance) * maxDist;
-            }
-
-            joystickInner.style.transform = `translate(${touchMoveX}px, ${touchMoveY}px)`;
-        });
-
-        joystick.addEventListener("touchend", () => {
-            isTouching = false;
-            touchMoveX = 0;
-            touchMoveY = 0;
-            joystickInner.style.transform = "translate(0, 0)";
-        });
-
-        // Game loop
-        function animate() {
-            requestAnimationFrame(animate);
-
-            // Move ball
-            const force = 5;
-            ballBody.applyForce(new CANNON.Vec3(
-                (touchMoveX / 40) * force, 
-                0, 
-                (touchMoveY / 40) * force
-            ), ballBody.position);
-
-            // Collect coins
-            coins.forEach((coin, i) => {
-                if (ballBody.position.distanceTo(coinBodies[i].position) < 1.2) {
-                    scene.remove(coin);
-                    world.removeBody(coinBodies[i]);
-                    score += 10;
-                    document.getElementById("score").innerText = `Score: ${score}`;
-                }
-            });
-
-            world.step(1 / 60);
-            ballMesh.position.copy(ballBody.position);
-            renderer.render(scene, camera);
-        }
-
-        animate();
-    </script>
+    <h1>Ciao, il gioco funziona!</h1>
+    <script src="script.js"></script>
 </body>
-</html>
+</html> 
+  
